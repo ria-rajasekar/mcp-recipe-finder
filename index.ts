@@ -30,29 +30,49 @@ const server = new MCPServer({
 server.use(async (c, next) => {
   await startActiveObservation("mcp-http-request", async (span) => {
     const start = Date.now();
-    const url = new URL(c.req.url);
+    const method =
+      c && typeof c === "object" && "req" in c && c.req && "method" in c.req
+        ? String(c.req.method)
+        : "UNKNOWN";
+    const rawUrl =
+      c && typeof c === "object" && "req" in c && c.req
+        ? (("url" in c.req && typeof c.req.url === "string" && c.req.url) ||
+            ("raw" in c.req &&
+              c.req.raw &&
+              typeof c.req.raw === "object" &&
+              "url" in c.req.raw &&
+              typeof c.req.raw.url === "string" &&
+              c.req.raw.url) ||
+            null)
+        : null;
+    const parsedUrl = rawUrl
+      ? new URL(rawUrl, process.env.MCP_URL || "http://localhost:3000")
+      : null;
 
     span.update({
       input: {
-        method: c.req.method,
-        path: url.pathname,
+        method,
+        path: parsedUrl?.pathname ?? "unknown",
       },
       metadata: {
         component: "http-middleware",
       },
     });
 
-    console.log(`→ ${c.req.method} ${c.req.url}`);
+    console.log(`→ ${method} ${rawUrl ?? "unknown-url"}`);
     try {
       await next();
       const durationMs = Date.now() - start;
       span.update({
         output: {
-          status: c.res.status,
+          status:
+            c && typeof c === "object" && "res" in c && c.res && "status" in c.res
+              ? c.res.status
+              : undefined,
           durationMs,
         },
       });
-      console.log(`← ${c.req.method} ${c.req.url} [${durationMs}ms]`);
+      console.log(`← ${method} ${rawUrl ?? "unknown-url"} [${durationMs}ms]`);
     } catch (error) {
       span.update({
         output: {
