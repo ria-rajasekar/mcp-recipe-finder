@@ -66,6 +66,21 @@ npm install
 npm run dev
 ```
 
+### Langfuse tracing
+
+Set Langfuse credentials before running the app:
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+```
+
+Then start the server and invoke tools from an MCP client. You should see traces in Langfuse for:
+
+- HTTP request handling (`mcp-http-request`)
+- MCP tool execution (`mcp-tool:<tool-name>`)
+
 ## Deploy
 
 ```bash

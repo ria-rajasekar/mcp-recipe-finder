@@ -1,3 +1,4 @@
+import "./instrumentation";
 import {
   MCPServer,
   text,
@@ -7,6 +8,7 @@ import {
   mix,
   completable,
 } from "mcp-use/server";
+import { startActiveObservation } from "@langfuse/tracing";
 import { z } from "zod";
 
 const server = new MCPServer({
@@ -26,10 +28,40 @@ const server = new MCPServer({
 // ---------------------------------------------------------------------------
 
 server.use(async (c, next) => {
-  const start = Date.now();
-  console.log(`→ ${c.req.method} ${c.req.url}`);
-  await next();
-  console.log(`← ${c.req.method} ${c.req.url} [${Date.now() - start}ms]`);
+  await startActiveObservation("mcp-http-request", async (span) => {
+    const start = Date.now();
+    const url = new URL(c.req.url);
+
+    span.update({
+      input: {
+        method: c.req.method,
+        path: url.pathname,
+      },
+      metadata: {
+        component: "http-middleware",
+      },
+    });
+
+    console.log(`→ ${c.req.method} ${c.req.url}`);
+    try {
+      await next();
+      const durationMs = Date.now() - start;
+      span.update({
+        output: {
+          status: c.res.status,
+          durationMs,
+        },
+      });
+      console.log(`← ${c.req.method} ${c.req.url} [${durationMs}ms]`);
+    } catch (error) {
+      span.update({
+        output: {
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      });
+      throw error;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -37,11 +69,40 @@ server.use(async (c, next) => {
 // ---------------------------------------------------------------------------
 
 server.use("mcp:tools/call", async (ctx, next) => {
-  console.log(`🔧 Tool called: ${ctx.params.name}`);
-  const start = Date.now();
-  const result = await next();
-  console.log(`🔧 Tool ${ctx.params.name} completed in ${Date.now() - start}ms`);
-  return result;
+  return startActiveObservation(`mcp-tool:${ctx.params.name}`, async (span) => {
+    const start = Date.now();
+    span.update({
+      input: { toolName: ctx.params.name },
+      metadata: {
+        component: "mcp-tool-middleware",
+        app: "recipe-finder",
+      },
+    });
+
+    console.log(`🔧 Tool called: ${ctx.params.name}`);
+    try {
+      const result = await next();
+      span.update({
+        output: {
+          toolName: ctx.params.name,
+          durationMs: Date.now() - start,
+          status: "ok",
+        },
+      });
+      console.log(`🔧 Tool ${ctx.params.name} completed in ${Date.now() - start}ms`);
+      return result;
+    } catch (error) {
+      span.update({
+        output: {
+          toolName: ctx.params.name,
+          durationMs: Date.now() - start,
+          status: "error",
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      });
+      throw error;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
