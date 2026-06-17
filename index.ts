@@ -61,7 +61,9 @@ server.use(async (c, next) => {
 
     console.log(`→ ${method} ${rawUrl ?? "unknown-url"}`);
     try {
-      await next();
+      if (typeof next === "function") {
+        await next();
+      }
       const durationMs = Date.now() - start;
       span.update({
         output: {
@@ -101,7 +103,7 @@ server.use("mcp:tools/call", async (ctx, next) => {
 
     console.log(`🔧 Tool called: ${ctx.params.name}`);
     try {
-      const result = await next();
+      const result = typeof next === "function" ? await next() : undefined;
       span.update({
         output: {
           toolName: ctx.params.name,
