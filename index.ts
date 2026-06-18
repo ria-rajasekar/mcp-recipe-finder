@@ -24,69 +24,6 @@ const server = new MCPServer({
 });
 
 // ---------------------------------------------------------------------------
-// HTTP Middleware — request logging (Hono layer)
-// ---------------------------------------------------------------------------
-
-server.use(async (c, next) => {
-  await startActiveObservation("mcp-http-request", async (span) => {
-    const start = Date.now();
-    const method =
-      c && typeof c === "object" && "req" in c && c.req && "method" in c.req
-        ? String(c.req.method)
-        : "UNKNOWN";
-    const rawUrl =
-      c && typeof c === "object" && "req" in c && c.req
-        ? (("url" in c.req && typeof c.req.url === "string" && c.req.url) ||
-            ("raw" in c.req &&
-              c.req.raw &&
-              typeof c.req.raw === "object" &&
-              "url" in c.req.raw &&
-              typeof c.req.raw.url === "string" &&
-              c.req.raw.url) ||
-            null)
-        : null;
-    const parsedUrl = rawUrl
-      ? new URL(rawUrl, process.env.MCP_URL || "http://localhost:3000")
-      : null;
-
-    span.update({
-      input: {
-        method,
-        path: parsedUrl?.pathname ?? "unknown",
-      },
-      metadata: {
-        component: "http-middleware",
-      },
-    });
-
-    console.log(`→ ${method} ${rawUrl ?? "unknown-url"}`);
-    try {
-      if (typeof next === "function") {
-        await next();
-      }
-      const durationMs = Date.now() - start;
-      span.update({
-        output: {
-          status:
-            c && typeof c === "object" && "res" in c && c.res && "status" in c.res
-              ? c.res.status
-              : undefined,
-          durationMs,
-        },
-      });
-      console.log(`← ${method} ${rawUrl ?? "unknown-url"} [${durationMs}ms]`);
-    } catch (error) {
-      span.update({
-        output: {
-          error: error instanceof Error ? error.message : "Unknown error",
-        },
-      });
-      throw error;
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
 // MCP Operation Middleware — intercept tool calls at the protocol level
 // ---------------------------------------------------------------------------
 
